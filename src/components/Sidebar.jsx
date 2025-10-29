@@ -33,9 +33,9 @@ function Sidebar({ role: propRole } = {}) {
     if (role === 'mentor') {
       return [
         ...common,
-        { to: '/mis-mentoriasE', label: 'Mis Mentorías' },
+        // usar ruta en minúsculas para coincidir con App.jsx
+        { to: '/mentoring', label: 'Mentorías' },
         { to: '/agenda', label: 'Agenda' },
-        { to: '/estadisticas', label: 'Estadísticas' },
       ];
     }
 

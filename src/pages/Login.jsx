@@ -15,11 +15,11 @@ export default function Login() {
         // Preferir el role ya guardado (por ejemplo tras el registro). Si no existe, usar heurística por email.
         const storedRoleRaw = localStorage.getItem('role');
         const storedRole = storedRoleRaw ? String(storedRoleRaw).toLowerCase().trim() : null;
-        const derivedRole = email.includes('mentor') ? 'mentor' : 'student';
-        const role = storedRole || derivedRole;
-        // normalizar antes de guardar
-        const normalizedRole = role === 'mentor' ? 'mentor' : 'student';
-        localStorage.setItem('role', normalizedRole);
+    const derivedRole = email.includes('mentor') ? 'mentor' : (email.includes('admin') ? 'admin' : 'student');
+    const role = storedRole || derivedRole;
+    // normalizar antes de guardar
+    const normalizedRole = role === 'mentor' ? 'mentor' : (role === 'admin' ? 'admin' : 'student');
+    localStorage.setItem('role', normalizedRole);
 
         // debug: loguear role detectado (mira la consola del navegador)
         // Esto ayuda a verificar si storedRole tiene el valor esperado
@@ -28,7 +28,8 @@ export default function Login() {
         console.log('[Login] storedRoleRaw=', storedRoleRaw, 'storedRole=', storedRole, 'derivedRole=', derivedRole, 'normalizedRole=', normalizedRole);
 
         // navegar a la ruta de perfil correcta
-            navigate(normalizedRole === 'mentor' ? '/mentor/profile' : '/student/profile');
+            const target = normalizedRole === 'mentor' ? '/mentor/profile' : (normalizedRole === 'admin' ? '/admin/dashboard' : '/student/profile');
+            navigate(target);
   }
 
   return (
