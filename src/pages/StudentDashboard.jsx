@@ -1,18 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import ProfileSideBar from '../components/ProfileSideBar';
 import StudentStatsCard from '../components/StudentsStatsCards';
 import CreatePostBox from '../components/CreatePostBox';
 
 export default function StudentDashboard() {
-  // Simulación de datos que vendrán del backend/servicios:
-  const user = {
+  // Estado user: inicialmente demo, luego se reemplaza con datos del backend
+  const [user, setUser] = useState({
     name: 'Santiago Herrera',
     email: 'santiago@demo.com',
     program: 'Ing. de Software',
     semester: '6°',
     city: 'Medellín',
-  };
+  });
+
+  // Intentamos leer userId desde localStorage (si tu backend lo guarda allí)
+  const storedId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+  const CURRENT_USER_ID = storedId ? Number(storedId) : 1;
+
+  // Cargar datos reales del backend cuando el componente monte
+  useEffect(() => {
+    const fetchStudent = async () => {
+      try {
+        const resp = await fetch('http://localhost:8080/students/me/full-info', {
+          headers: {
+            'X-USER-ID': CURRENT_USER_ID,
+          },
+        });
+
+        if (!resp.ok) {
+          console.warn('StudentDashboard: no se pudo cargar user desde backend, usando demo. status=', resp.status);
+          return;
+        }
+
+        const data = await resp.json();
+        setUser({
+          name: data.name ?? data.fullName ?? user.name,
+          email: data.email ?? user.email,
+          program: data.programa ?? data.program ?? user.program,
+          semester: data.semestre ?? data.semester ?? user.semester,
+          city: data.city ?? user.city,
+        });
+      } catch (err) {
+        console.error('Error fetching student info in dashboard:', err);
+      }
+    };
+
+    fetchStudent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CURRENT_USER_ID]);
 
   const stats = {
     promedioGeneral: 3.8,

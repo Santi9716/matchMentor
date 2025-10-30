@@ -1,103 +1,149 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import CreateMentoriaModal from '../components/CreateMentoriaModal';
 
 export default function Mentoring() {
-  // Lista de mentorías simulada (esto vendrá de tu backend)
-  const [sesiones, setSesiones] = useState([
-    {
-      id: 11,
-      estudianteNombre: 'Santiago Herrera',
-      fecha: '2025-10-23',
-      hora: '19:00',
-      estado: 'AGENDADA', // AGENDADA | COMPLETADA | CANCELADA
-      estudianteConfirmo: true, // true = confirmado, false = canceló/no confirmó
-      temaPlaneado: 'Algoritmos recursivos en árboles binarios',
-      resumen: '', // se llena al completar
-      observacionesMentor: '',
-      calificacionEstudianteAlMentor: null, // rating que el estudiante le puso al mentor
-      calificacionMentorAlEstudiante: null, // rating que el mentor le pone al estudiante
-    },
-    {
-      id: 12,
-      estudianteNombre: 'María López',
-      fecha: '2025-10-20',
-      hora: '18:00',
-      estado: 'COMPLETADA',
-      estudianteConfirmo: true,
-      temaPlaneado: 'Normalización en SQL y práctica de JOINs',
-      resumen: 'Vimos normal forms (1NF, 2NF, 3NF), y diseñamos consultas JOIN para 3 tablas.',
-      observacionesMentor: 'Tiene buena base pero le falta seguridad cuando explica sus consultas.',
-      calificacionEstudianteAlMentor: 5,
-      calificacionMentorAlEstudiante: 4,
-    },
-    {
-      id: 13,
-      estudianteNombre: 'Juan Torres',
-      fecha: '2025-10-24',
-      hora: '17:30',
-      estado: 'AGENDADA',
-      estudianteConfirmo: false,
-      temaPlaneado: 'Repaso de álgebra lineal básica (independencia lineal)',
-      resumen: '',
-      observacionesMentor: '',
-      calificacionEstudianteAlMentor: null,
-      calificacionMentorAlEstudiante: null,
-    },
-  ]);
+  // id del mentor autenticado
+  const storedId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+  const CURRENT_MENTOR_ID = storedId ? Number(storedId) : 12; // fallback
 
-  // Control del modal
+  const [sesiones, setSesiones] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [selected, setSelected] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Campos editables dentro del modal cuando la sesión está COMPLETADA
+  // campos de edición
   const [tempObservaciones, setTempObservaciones] = useState('');
   const [tempCalificacion, setTempCalificacion] = useState(0);
+  const [tempResumen, setTempResumen] = useState('');
+
+  // cargar sesiones del backend
+  const loadSessions = () => {
+    fetch('http://localhost:8080/mentors/me/sessions', {
+      headers: {
+        'X-USER-ID': CURRENT_MENTOR_ID
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Error al cargar sesiones');
+        return res.json();
+      })
+      .then(data => {
+        // data ya viene en el formato que armamos en el back
+        setSesiones(data);
+      })
+      .catch(err => {
+        console.error('Fallo al cargar sesiones:', err);
+      });
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, [CURRENT_MENTOR_ID]);
 
   // Abrir modal de detalles
   const handleVerDetalles = (sesion) => {
     setSelected(sesion);
     setTempObservaciones(sesion.observacionesMentor || '');
     setTempCalificacion(sesion.calificacionMentorAlEstudiante || 0);
+    setTempResumen(sesion.resumen || '');
     setShowModal(true);
-  };
-
-  // Guardar cambios (solo aplica si está COMPLETADA)
-  const handleGuardarCambios = () => {
-    if (!selected) return;
-
-    // actualizamos en memoria
-    setSesiones((prev) =>
-      prev.map((s) =>
-        s.id === selected.id
-          ? {
-              ...s,
-              observacionesMentor: tempObservaciones,
-              calificacionMentorAlEstudiante: tempCalificacion,
-            }
-          : s
-      )
-    );
-
-    // aquí luego harías:
-    // await api.updateSessionFeedback(selected.id, {
-    //   observacionesMentor: tempObservaciones,
-    //   calificacionMentorAlEstudiante: tempCalificacion
-    // });
-
-    setShowModal(false);
   };
 
   const closeModal = () => {
     setShowModal(false);
+    setSelected(null);
   };
 
+  // Guardar cambios (PUT al back)
+  const handleGuardarCambios = () => {
+    if (!selected) return;
+
+    const payload = {
+      observacionesMentor: tempObservaciones,
+      calificacionMentorAlEstudiante: tempCalificacion,
+      resumen: tempResumen,
+      // si quieres, al guardar puedes marcarla como COMPLETADA:
+      // estado: 'COMPLETADA'
+    };
+
+    fetch(`http://localhost:8080/mentors/me/sessions/${selected.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-USER-ID': CURRENT_MENTOR_ID
+      },
+      body: JSON.stringify(payload)
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const t = await res.text().catch(() => '');
+          throw new Error(t || 'Error al actualizar sesión');
+        }
+        return res.json();
+      })
+      .then(updated => {
+        // actualizar en la tabla
+        setSesiones(prev =>
+          prev.map(s =>
+            s.id === selected.id
+              ? {
+                  ...s,
+                  observacionesMentor: updated.observacionesMentor,
+                  calificacionMentorAlEstudiante: updated.calificacionMentorAlEstudiante,
+                  resumen: updated.resumen,
+                  estado: updated.estado || s.estado
+                }
+              : s
+          )
+        );
+        setShowModal(false);
+      })
+      .catch(err => {
+        console.error('Error al guardar cambios:', err);
+        alert('No se pudo guardar la sesión.');
+      });
+  };
+
+  // abrir modal de crear
   const openCreate = () => setCreateOpen(true);
   const closeCreate = () => setCreateOpen(false);
 
-  const createSession = (data) => {
-    setSesiones(prev => [data, ...prev]);
+  // cuando el modal de crear devuelve una sesión nueva
+  const createSession = (dataFromModal) => {
+    // dataFromModal debería tener: fecha, hora, temaPlaneado, studentId?, matchId?
+    const payload = {
+      fecha: dataFromModal.fecha,
+      hora: dataFromModal.hora,
+      temaPlaneado: dataFromModal.temaPlaneado,
+      studentId: dataFromModal.studentId || null,
+      matchId: dataFromModal.matchId || null
+    };
+
+    fetch('http://localhost:8080/mentors/me/sessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-USER-ID': CURRENT_MENTOR_ID
+      },
+      body: JSON.stringify(payload)
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const t = await res.text().catch(() => '');
+          throw new Error(t || 'Error al crear la sesión');
+        }
+        return res.json();
+      })
+      .then(created => {
+        // la añadimos arriba
+        setSesiones(prev => [created, ...prev]);
+        setCreateOpen(false);
+      })
+      .catch(err => {
+        console.error('Error al crear sesión:', err);
+        alert('No se pudo crear la sesión.');
+      });
   };
 
   // Render del badge de estado
@@ -118,8 +164,11 @@ export default function Mentoring() {
     <DashboardLayout role="mentor" title="Mis Mentorías">
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h6 className="mb-0">Tus sesiones</h6>
-        <button className="btn btn-primary btn-sm" onClick={openCreate}>Crear mentoría</button>
+        <button className="btn btn-primary btn-sm" onClick={openCreate}>
+          Crear mentoría
+        </button>
       </div>
+
       {/* Tabla de sesiones */}
       <div className="table-responsive">
         <table className="table align-middle">
@@ -151,11 +200,18 @@ export default function Mentoring() {
                 </td>
               </tr>
             ))}
+            {sesiones.length === 0 && (
+              <tr>
+                <td colSpan={4} className="text-center text-muted py-4">
+                  No tienes mentorías registradas.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Modal manual controlado por React */}
+      {/* Modal de detalles */}
       {showModal && selected && (
         <div
           className="modal fade show"
@@ -178,7 +234,6 @@ export default function Mentoring() {
               </div>
 
               <div className="modal-body">
-                {/* Info general común */}
                 <div className="mb-3">
                   <div className="small text-secondary">Tema planeado</div>
                   <div className="fw-semibold">{selected.temaPlaneado}</div>
@@ -224,28 +279,26 @@ export default function Mentoring() {
                   <>
                     <div className="mb-3">
                       <h6 className="fw-bold">Resumen de la sesión</h6>
-                      <div className="border rounded-3 p-2 bg-light small">
-                        {selected.resumen || 'Sin resumen registrado.'}
-                      </div>
+                      <textarea
+                        className="form-control"
+                        rows={3}
+                        value={tempResumen}
+                        onChange={(e) => setTempResumen(e.target.value)}
+                        placeholder="Qué se vio en esta sesión..."
+                      />
                     </div>
 
                     <div className="row g-3 mb-3">
                       <div className="col-md-6">
                         <label className="form-label small text-secondary">
-                          Observaciones del mentor sobre el estudiante
+                          Observaciones del mentor
                         </label>
                         <textarea
                           className="form-control"
                           rows={3}
                           value={tempObservaciones}
-                          onChange={(e) =>
-                            setTempObservaciones(e.target.value)
-                          }
-                          placeholder="Ej: Trabajó bien, pero necesita reforzar SQL JOINs en contexto real"
+                          onChange={(e) => setTempObservaciones(e.target.value)}
                         />
-                        <div className="form-text small">
-                          Esto no lo ve el estudiante (solo interno).
-                        </div>
                       </div>
 
                       <div className="col-md-6">
@@ -266,10 +319,6 @@ export default function Mentoring() {
                           <option value={4}>4 - Buen desempeño</option>
                           <option value={5}>5 - Excelente actitud</option>
                         </select>
-
-                        <div className="small text-secondary mt-2">
-                          Calificación que TÚ le das al estudiante.
-                        </div>
                       </div>
                     </div>
 
@@ -288,17 +337,15 @@ export default function Mentoring() {
                   </>
                 )}
 
-                {/* Si la sesión fue cancelada (opcional) */}
+                {/* Si la sesión fue cancelada */}
                 {selected.estado === 'CANCELADA' && (
                   <div className="alert alert-danger">
-                    Esta mentoría fue cancelada. Considera reprogramar con el
-                    estudiante.
+                    Esta mentoría fue cancelada. Considera reprogramar.
                   </div>
                 )}
               </div>
 
               <div className="modal-footer">
-                {/* Botón Guardar solo si está COMPLETADA */}
                 {selected.estado === 'COMPLETADA' && (
                   <button
                     className="btn btn-primary"
@@ -316,10 +363,12 @@ export default function Mentoring() {
         </div>
       )}
 
+      {/* Modal de crear sesión */}
       {createOpen && (
         <CreateMentoriaModal onClose={closeCreate} onCreate={createSession} />
       )}
     </DashboardLayout>
   );
 }
+
 

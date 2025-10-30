@@ -1,12 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import CreatePostBox from '../components/CreatePostBox';
 
 export default function MentorDashboard() {
-  const user = {
+  // Estado user: demo por defecto, luego cargaremos los datos reales desde el backend
+  const [user, setUser] = useState({
     name: 'Ana Ruiz',
     email: 'ana.mentor@demo.com',
-  };
+  });
+
+  // Intentamos leer userId desde localStorage (si tu backend guarda el id ahí tras el login)
+  const storedId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+  const CURRENT_MENTOR_ID = storedId ? Number(storedId) : null;
+
+  useEffect(() => {
+    if (!CURRENT_MENTOR_ID) return;
+
+    const fetchMentor = async () => {
+      try {
+        const resp = await fetch('http://localhost:8080/mentors/me/full-info', {
+          headers: { 'X-USER-ID': CURRENT_MENTOR_ID },
+        });
+
+        if (!resp.ok) {
+          console.warn('MentorDashboard: no se pudo cargar mentor desde backend, usando demo. status=', resp.status);
+          return;
+        }
+
+        const data = await resp.json();
+        setUser({
+          name: data.name ?? data.fullName ?? user.name,
+          email: data.email ?? user.email,
+        });
+      } catch (err) {
+        console.error('Error fetching mentor info in dashboard:', err);
+      }
+    };
+
+    fetchMentor();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CURRENT_MENTOR_ID]);
 
   const [posts, setPosts] = useState([
     {

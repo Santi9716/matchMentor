@@ -24,21 +24,7 @@ export default function NavBar() {
           </button>
           <div className="collapse navbar-collapse" id="navbarExamples">
             <ul className="navbar-nav ms-auto mb-2 mb-lg-0">
-              {/* Mostrar links de perfil solo cuando NO estemos en /login ni /register y no estemos autenticados */}
-              {!authed && location.pathname !== '/login' && location.pathname !== '/register' && (
-                <>
-                  <li className="nav-item">
-                    <Link className={`nav-link ${location.pathname === '/student' ? 'active' : ''}`} to="/student">
-                      Perfil Estudiante
-                    </Link>
-                  </li>
-                  <li className="nav-item">
-                    <Link className={`nav-link ${location.pathname === '/mentor' ? 'active' : ''}`} to="/mentor">
-                      Perfil Mentor
-                    </Link>
-                  </li>
-                </>
-              )}
+              {/* Links de perfil removidos por petición del usuario */}
             </ul>
             <div className="d-flex align-items-center gap-2">
               {!authed ? (
