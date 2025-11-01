@@ -1,16 +1,38 @@
-import { Link, useLocation,useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 
 export default function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [authed, setAuthed] = useState(false);
+
+  const isValidToken = (t) => {
+    // guard against values like null/undefined stored as strings
+    return !!t && t !== "null" && t !== "undefined";
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("role");
+    setAuthed(false);
     navigate("/login");
-  }
+  };
 
-  const authed = !!localStorage.getItem("authToken");
+  // update auth state when location changes (login/logout navigation) or when app mounts
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    setAuthed(isValidToken(token));
+  }, [location]);
+
+  // listen to storage events (other tabs) to keep state in sync
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === "authToken") setAuthed(isValidToken(e.newValue));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   return (
     <div>

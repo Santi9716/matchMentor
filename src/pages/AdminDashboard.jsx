@@ -13,7 +13,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="d-flex flex-column min-vh-100 bg-light">
-      <NavBar />
 
       <main className="flex-grow-1 py-4">
         <div className="container">

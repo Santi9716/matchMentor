@@ -28,8 +28,7 @@ export default function StudentProfilePage() {
 
   const [editing, setEditing] = useState(false);
 
-  // ======== NUEVO: notas ========
-  // formulario de agregar nota
+  // ======== NOTAS ========
   const [showGradeForm, setShowGradeForm] = useState(false);
   const [gradeForm, setGradeForm] = useState({
     codigo: "",
@@ -38,12 +37,17 @@ export default function StudentProfilePage() {
     year: "",
   });
 
-  // notas que ya existen en el backend (las traemos con GET)
+  // notas de BD
   const [savedGrades, setSavedGrades] = useState([]);
 
-  // para edición inline de una nota guardada
+  // edición de UNA nota
   const [editingGradeId, setEditingGradeId] = useState(null);
-  const [editingGradeValue, setEditingGradeValue] = useState("");
+  const [editingGradeData, setEditingGradeData] = useState({
+    codigo: "",
+    materia: "",
+    nota: "",
+    year: "",
+  });
 
   // ============================
   // 1. Traer perfil del estudiante
@@ -76,7 +80,7 @@ export default function StudentProfilePage() {
   }, [CURRENT_USER_ID]);
 
   // ============================
-  // 2. Traer notas del estudiante (las del back)
+  // 2. Traer notas del estudiante
   // ============================
   const loadGrades = () => {
     fetch("http://localhost:8080/students/me/grades", {
@@ -89,16 +93,12 @@ export default function StudentProfilePage() {
         return res.json();
       })
       .then((data) => {
-        // el back devuelve StudentGrades con relaciones: student, subject, grade, takenAt...
-        // pero en el composite lo devolvimos plano: {id, codigo, materia, nota, year, studentId}
-        // así que soportamos ambas formas
         const normalized = data.map((g) => {
           return {
             id: g.id,
-            // si viene del composite:
             codigo: g.codigo || (g.subject && g.subject.code) || "",
             materia: g.materia || (g.subject && g.subject.name) || "",
-            nota: g.nota != null ? g.nota : g.grade, // g.grade es el nombre del campo en la entidad
+            nota: g.nota != null ? g.nota : g.grade,
             year: g.year || (g.takenAt ? g.takenAt.substring(0, 4) : ""),
           };
         });
@@ -175,15 +175,13 @@ export default function StudentProfilePage() {
   }
 
   // ============================
-  // 4. Manejo del formulario de notas (nuevo)
+  // 4. Formulario de notas (crear)
   // ============================
-
   const onGradeChange = (e) => {
     const { name, value } = e.target;
     setGradeForm((g) => ({ ...g, [name]: value }));
   };
 
-  // crear nota en el backend usando el endpoint compuesto
   const addGradeToBackend = (e) => {
     e.preventDefault();
 
@@ -219,7 +217,6 @@ export default function StudentProfilePage() {
         return res.json();
       })
       .then((saved) => {
-        // agregamos la nota recién creada al listado
         setSavedGrades((prev) => [
           {
             id: saved.id,
@@ -230,7 +227,6 @@ export default function StudentProfilePage() {
           },
           ...prev,
         ]);
-        // limpiar formulario
         setGradeForm({ codigo: "", materia: "", nota: "", year: "" });
         setShowGradeForm(false);
       })
@@ -240,7 +236,9 @@ export default function StudentProfilePage() {
       });
   };
 
-  // eliminar una nota guardada
+  // ============================
+  // 5. Eliminar nota
+  // ============================
   const deleteGrade = (gradeId) => {
     if (!window.confirm("¿Eliminar esta nota?")) return;
 
@@ -252,7 +250,6 @@ export default function StudentProfilePage() {
     })
       .then((res) => {
         if (!res.ok) throw new Error("Error al eliminar nota");
-        // quitar del estado
         setSavedGrades((prev) => prev.filter((g) => g.id !== gradeId));
       })
       .catch((err) => {
@@ -261,25 +258,42 @@ export default function StudentProfilePage() {
       });
   };
 
-  // empezar a editar una nota ya guardada
+  // ============================
+  // 6. Editar nota existente
+  // ============================
   const startEditGrade = (grade) => {
     setEditingGradeId(grade.id);
-    setEditingGradeValue(grade.nota);
+    setEditingGradeData({
+      codigo: grade.codigo || "",
+      materia: grade.materia || "",
+      nota: grade.nota != null ? grade.nota : "",
+      year: grade.year || "",
+    });
   };
 
-  // guardar edición de nota (usa PUT /grades/{id})
+  const onEditGradeChange = (e) => {
+    const { name, value } = e.target;
+    setEditingGradeData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
   const saveEditedGrade = (grade) => {
-    // el back de /grades/{id} espera un StudentGrades,
-    // pero nosotros solo vamos a mandarle grade y takenAt
+    // payload que espera el back actualizado:
+    // { codigo, materia, nota, year }
     const body = {
-      grade: Number(editingGradeValue),
-      takenAt: grade.year ? `${grade.year}-01-01T00:00:00` : new Date().toISOString(),
+      codigo: editingGradeData.codigo,
+      materia: editingGradeData.materia,
+      nota: Number(editingGradeData.nota),
+      year: editingGradeData.year,
     };
 
-    fetch(`http://localhost:8080/grades/${grade.id}`, {
+    fetch(`http://localhost:8080/students/me/grades/${grade.id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
+        "X-USER-ID": CURRENT_USER_ID,
       },
       body: JSON.stringify(body),
     })
@@ -287,15 +301,28 @@ export default function StudentProfilePage() {
         if (!res.ok) throw new Error("Error al actualizar nota");
         return res.json();
       })
-      .then(() => {
+      .then((updated) => {
         // actualizar en el front
         setSavedGrades((prev) =>
           prev.map((g) =>
-            g.id === grade.id ? { ...g, nota: Number(editingGradeValue) } : g
+            g.id === grade.id
+              ? {
+                  ...g,
+                  codigo: updated.codigo,
+                  materia: updated.materia,
+                  nota: updated.nota,
+                  year: updated.year,
+                }
+              : g
           )
         );
         setEditingGradeId(null);
-        setEditingGradeValue("");
+        setEditingGradeData({
+          codigo: "",
+          materia: "",
+          nota: "",
+          year: "",
+        });
       })
       .catch((err) => {
         console.error("Error al actualizar nota:", err);
@@ -303,10 +330,14 @@ export default function StudentProfilePage() {
       });
   };
 
-  // cancelar edición de nota
   const cancelEditGrade = () => {
     setEditingGradeId(null);
-    setEditingGradeValue("");
+    setEditingGradeData({
+      codigo: "",
+      materia: "",
+      nota: "",
+      year: "",
+    });
   };
 
   return (
@@ -432,7 +463,7 @@ export default function StudentProfilePage() {
           </div>
         </div>
 
-        {/* Resumen académico (lo puedes conectar luego con /students/me/grades/stats) */}
+        {/* Resumen académico */}
         <div className="col-12 col-md-3">
           <div className="border rounded-3 p-3 h-100">
             <h6 className="fw-bold mb-3">Resumen académico</h6>
@@ -453,7 +484,7 @@ export default function StudentProfilePage() {
           </div>
         </div>
 
-        {/* Agregar nota manualmente + listado de notas guardadas */}
+        {/* Agregar nota + listado */}
         <div className="col-12">
           <div className="border rounded-3 p-3">
             <h6 className="fw-bold mb-3">Agregar nota manualmente</h6>
@@ -533,7 +564,7 @@ export default function StudentProfilePage() {
               </form>
             )}
 
-            {/* ===== CONTENEDOR DE NOTAS GUARDADAS ===== */}
+            {/* ===== LISTADO DE NOTAS ===== */}
             <div className="mt-4">
               <h6 className="fw-bold mb-2">Notas guardadas</h6>
               {savedGrades.length === 0 ? (
@@ -547,62 +578,87 @@ export default function StudentProfilePage() {
                       key={g.id}
                       className="list-group-item d-flex justify-content-between align-items-center"
                     >
-                      <div>
-                        <div>
-                          <strong>{g.codigo}</strong> — {g.materia}
-                        </div>
-                        <div className="small text-secondary">
-                          {g.year || "Año N/A"}
-                        </div>
-                      </div>
-
-                      <div className="d-flex gap-2 align-items-center">
-                        {editingGradeId === g.id ? (
-                          <>
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="form-control form-control-sm"
-                              style={{ width: "90px" }}
-                              value={editingGradeValue}
-                              onChange={(e) =>
-                                setEditingGradeValue(e.target.value)
-                              }
-                            />
+                      {editingGradeId === g.id ? (
+                        // MODO EDICIÓN COMPLETA
+                        <div className="d-flex flex-wrap gap-2 align-items-center flex-grow-1">
+                          <input
+                            className="form-control form-control-sm"
+                            style={{ width: "110px" }}
+                            name="codigo"
+                            value={editingGradeData.codigo}
+                            onChange={onEditGradeChange}
+                            placeholder="Código"
+                          />
+                          <input
+                            className="form-control form-control-sm"
+                            style={{ width: "160px" }}
+                            name="materia"
+                            value={editingGradeData.materia}
+                            onChange={onEditGradeChange}
+                            placeholder="Materia"
+                          />
+                          <input
+                            className="form-control form-control-sm"
+                            style={{ width: "80px" }}
+                            name="nota"
+                            type="number"
+                            step="0.01"
+                            value={editingGradeData.nota}
+                            onChange={onEditGradeChange}
+                            placeholder="Nota"
+                          />
+                          <input
+                            className="form-control form-control-sm"
+                            style={{ width: "90px" }}
+                            name="year"
+                            value={editingGradeData.year}
+                            onChange={onEditGradeChange}
+                            placeholder="Año"
+                          />
+                          <div className="d-flex gap-1">
                             <button
                               className="btn btn-sm btn-success"
                               onClick={() => saveEditedGrade(g)}
                             >
-                              ✔
+                              Guardar
                             </button>
                             <button
                               className="btn btn-sm btn-outline-secondary"
                               onClick={cancelEditGrade}
                             >
-                              ✖
+                              Cancelar
                             </button>
-                          </>
-                        ) : (
-                          <>
-                            <span className="badge bg-secondary">
-                              {g.nota}
-                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        // MODO LECTURA
+                        <>
+                          <div>
+                            <div>
+                              <strong>{g.codigo}</strong> — {g.materia}
+                            </div>
+                            <div className="small text-secondary">
+                              {g.year || "Año N/A"}
+                            </div>
+                          </div>
+
+                          <div className="d-flex gap-2 align-items-center">
+                            <span className="badge bg-secondary">{g.nota}</span>
                             <button
                               className="btn btn-sm btn-outline-primary"
                               onClick={() => startEditGrade(g)}
                             >
                               Editar
                             </button>
-                          </>
-                        )}
-
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => deleteGrade(g.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => deleteGrade(g.id)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

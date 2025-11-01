@@ -1,120 +1,360 @@
-import React, { useState } from 'react';
-import NavBar from '../components/NavBar';
-import AdminSidebar from '../components/AdminSidebar';
+import React, { useEffect, useState } from "react";
+import AdminSidebar from "../components/AdminSidebar";
 
 export default function AdminUsers() {
+  const API_BASE = "http://localhost:8080";
 
-  // Estado simulando la BD de usuarios
-  const [users, setUsers] = useState([
-    { id: 1, name: 'Santiago Herrera', email: 'santiago@demo.com', role: 'STUDENT', city: 'Medellín' },
-    { id: 2, name: 'Ana Ruiz', email: 'ana.mentor@demo.com', role: 'MENTOR', city: 'Medellín' },
-    { id: 3, name: 'Carlos Pérez', email: 'carlos.mentor@demo.com', role: 'MENTOR', city: 'Bogotá' },
-  ]);
+  // listas separadas que vienen del back
+  const [students, setStudents] = useState([]);
+  const [mentors, setMentors] = useState([]);
 
-  // Formulario para crear/editar
+  // lista que se muestra según pestaña + búsqueda
+  const [filtered, setFiltered] = useState([]);
+
+  // pestaña activa
+  const [activeTab, setActiveTab] = useState("STUDENT");
+
+  // formulario
   const [form, setForm] = useState({
     id: null,
-    name: '',
-    email: '',
-    role: 'STUDENT',
-    city: '',
+    name: "",
+    email: "",
+    role: "STUDENT",
+    city: "",
+    password: "",
+    blocked: false,
   });
+
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const isEditing = form.id !== null;
 
-  // manejar cambios del form
-  const onChange = (e) => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+  // =========================
+  // HELPERS
+  // =========================
+  const applySearch = (list, q) => {
+    const query = (q || "").toLowerCase();
+    if (!query) return list;
+    return list.filter(
+      (u) =>
+        (u.name && u.name.toLowerCase().includes(query)) ||
+        (u.email && u.email.toLowerCase().includes(query)) ||
+        (u.city && u.city.toLowerCase().includes(query))
+    );
   };
 
-  // limpiar el form
+  // =========================
+  // LOADERS  (usa /users/students y /users/mentors)
+  // =========================
+  const loadStudents = async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/users/students`);
+      if (!resp.ok) {
+        console.error("Error al cargar estudiantes:", resp.status);
+        return;
+      }
+      const data = await resp.json();
+      setStudents(data);
+      if (activeTab === "STUDENT") {
+        setFiltered(applySearch(data, search));
+      }
+    } catch (err) {
+      console.error("Error de red al cargar estudiantes:", err);
+    }
+  };
+
+  const loadMentors = async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/users/mentors`);
+      if (!resp.ok) {
+        console.error("Error al cargar mentores:", resp.status);
+        return;
+      }
+      const data = await resp.json();
+      setMentors(data);
+      if (activeTab === "MENTOR") {
+        setFiltered(applySearch(data, search));
+      }
+    } catch (err) {
+      console.error("Error de red al cargar mentores:", err);
+    }
+  };
+
+  // cargar ambos al inicio
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([loadStudents(), loadMentors()]).finally(() =>
+      setLoading(false)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // =========================
+  // CAMBIO DE PESTAÑA
+  // =========================
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearch("");
+    if (tab === "STUDENT") {
+      setFiltered(applySearch(students, ""));
+      setForm((prev) => ({ ...prev, role: "STUDENT" }));
+    } else {
+      setFiltered(applySearch(mentors, ""));
+      setForm((prev) => ({ ...prev, role: "MENTOR" }));
+    }
+  };
+
+  // =========================
+  // BÚSQUEDA
+  // =========================
+  const handleSearch = (e) => {
+    const q = e.target.value;
+    setSearch(q);
+    if (activeTab === "STUDENT") {
+      setFiltered(applySearch(students, q));
+    } else {
+      setFiltered(applySearch(mentors, q));
+    }
+  };
+
+  // =========================
+  // FORM
+  // =========================
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
   const resetForm = () => {
     setForm({
       id: null,
-      name: '',
-      email: '',
-      role: 'STUDENT',
-      city: '',
+      name: "",
+      email: "",
+      role: activeTab === "STUDENT" ? "STUDENT" : "MENTOR",
+      city: "",
+      password: "",
+      blocked: false,
     });
   };
 
-  // Crear o actualizar usuario en memoria
-  const saveUser = () => {
+  // =========================
+  // GUARDAR (crear / editar)
+  // =========================
+  const saveUser = async () => {
     if (!form.name.trim() || !form.email.trim()) {
-      alert('Nombre y email son obligatorios');
+      alert("Nombre y email son obligatorios");
       return;
     }
 
-    if (isEditing) {
-      // actualizar
-      setUsers(prev =>
-        prev.map(u => u.id === form.id ? { ...u, ...form } : u)
-      );
-    } else {
-      // crear (simulamos autoincrement con Date.now)
-      const nuevo = {
-        ...form,
-        id: Date.now(),
-      };
-      setUsers(prev => [nuevo, ...prev]);
+    const payload = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      role: form.role, // STUDENT | MENTOR
+      city: form.city.trim(),
+      blocked: form.blocked,
+    };
+
+    // password opcional
+    if (!isEditing && form.password.trim()) {
+      payload.password = form.password.trim();
+    }
+    if (isEditing && form.password.trim()) {
+      payload.password = form.password.trim();
     }
 
-    resetForm();
+    setLoading(true);
+    try {
+      let resp;
+      if (isEditing) {
+        // EDITAR
+        resp = await fetch(`${API_BASE}/users/${form.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // CREAR
+        resp = await fetch(`${API_BASE}/users`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        console.error("Error al guardar usuario:", resp.status, txt);
+        alert("No se pudo guardar el usuario");
+        return;
+      }
+
+      // recargar SOLO la lista que toca
+      if (payload.role === "STUDENT") {
+        await loadStudents();
+        setActiveTab("STUDENT");
+      } else if (payload.role === "MENTOR") {
+        await loadMentors();
+        setActiveTab("MENTOR");
+      } else {
+        await Promise.all([loadStudents(), loadMentors()]);
+      }
+
+      resetForm();
+    } catch (err) {
+      console.error("Error de red al guardar usuario:", err);
+      alert("Error de red al guardar usuario");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Editar: carga datos al form
+  // =========================
+  // EDITAR
+  // =========================
   const editUser = (u) => {
     setForm({
       id: u.id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      city: u.city,
+      name: u.name || "",
+      email: u.email || "",
+      role: u.role || "STUDENT",
+      city: u.city || "",
+      password: "",
+      blocked: !!u.blocked,
     });
+
+    // cambiar de pestaña según su rol
+    if (u.role === "STUDENT") {
+      setActiveTab("STUDENT");
+      setFiltered(applySearch(students, search));
+    } else if (u.role === "MENTOR") {
+      setActiveTab("MENTOR");
+      setFiltered(applySearch(mentors, search));
+    }
   };
 
-  // Eliminar usuario
-  const deleteUser = (id) => {
-    if (!window.confirm('¿Seguro que quieres eliminar este usuario?')) return;
-    setUsers(prev => prev.filter(u => u.id !== id));
-    // en backend esto sería DELETE /api/admin/users/{id}
+  // =========================
+  // ELIMINAR
+  // =========================
+  const deleteUser = async (id, role) => {
+    if (!window.confirm("¿Seguro que quieres eliminar este usuario?")) return;
+    try {
+      const resp = await fetch(`${API_BASE}/users/${id}`, {
+        method: "DELETE",
+      });
+      if (!resp.ok) {
+        alert("No se pudo eliminar el usuario");
+        return;
+      }
+
+      if (role === "STUDENT") {
+        await loadStudents();
+      } else if (role === "MENTOR") {
+        await loadMentors();
+      }
+    } catch (err) {
+      console.error("Error de red al eliminar usuario:", err);
+    }
   };
 
+  // =========================
+  // BLOQUEAR / DESBLOQUEAR
+  // =========================
+  const toggleBlock = async (u) => {
+    const newBlocked = !u.blocked;
+    try {
+      const resp = await fetch(
+        `${API_BASE}/admin/users/${u.id}/block?blocked=${newBlocked}`,
+        {
+          method: "PATCH",
+        }
+      );
+      if (!resp.ok) {
+        alert("No se pudo cambiar el estado del usuario");
+        return;
+      }
+
+      if (u.role === "STUDENT") {
+        await loadStudents();
+      } else if (u.role === "MENTOR") {
+        await loadMentors();
+      }
+    } catch (err) {
+      console.error("Error de red al bloquear usuario:", err);
+    }
+  };
+
+  // =========================
+  // RENDER
+  // =========================
   return (
     <div className="d-flex flex-column min-vh-100 bg-light">
-      <NavBar />
-
       <main className="flex-grow-1 py-4">
         <div className="container">
           <div className="row g-3">
-
-            {/* Sidebar izquierda */}
+            {/* Sidebar */}
             <div className="col-12 col-lg-3">
               <AdminSidebar />
             </div>
 
-            {/* Contenido principal */}
+            {/* Contenido */}
             <div className="col-12 col-lg-9">
               <div className="vstack gap-3">
-
-                {/* Header sección */}
-                <div className="w3-container w3-padding w3-dark-grey rounded-3 text-white">
-                  <h5 className="mb-0">Gestión de Usuarios</h5>
-                  <div className="text-white-50 small">
-                    Crea, edita o elimina estudiantes y mentores
+                {/* Header */}
+                <div className="w3-container w3-padding w3-dark-grey rounded-3 text-white d-flex justify-content-between align-items-center">
+                  <div>
+                    <h5 className="mb-0 text-primary">Gestión de Usuarios</h5>
+                    <div className="text-white-50 small">
+                      Crea, edita, elimina o bloquea usuarios del sistema
+                    </div>
+                  </div>
+                  <div style={{ minWidth: "220px" }}>
+                    <input
+                      className="form-control form-control-sm"
+                      placeholder="Buscar..."
+                      value={search}
+                      onChange={handleSearch}
+                    />
                   </div>
                 </div>
 
-                {/* Formulario Crear / Editar */}
+                {/* Pestañas */}
+                <div className="d-flex gap-2">
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${
+                      activeTab === "STUDENT"
+                        ? "btn-primary"
+                        : "btn-outline-primary"
+                    }`}
+                    onClick={() => handleTabChange("STUDENT")}
+                  >
+                    Estudiantes
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${
+                      activeTab === "MENTOR"
+                        ? "btn-success"
+                        : "btn-outline-success"
+                    }`}
+                    onClick={() => handleTabChange("MENTOR")}
+                  >
+                    Mentores
+                  </button>
+                </div>
+
+                {/* Formulario */}
                 <div className="w3-card w3-white rounded-3 p-3">
                   <h6 className="fw-bold mb-3">
-                    {isEditing ? 'Editar Usuario' : 'Crear Usuario'}
+                    {isEditing ? "Editar usuario" : "Crear usuario"}
                   </h6>
 
                   <div className="row g-3">
                     <div className="col-md-6">
-                      <label className="form-label small text-secondary">Nombre</label>
+                      <label className="form-label small text-secondary">
+                        Nombre
+                      </label>
                       <input
                         className="form-control"
                         name="name"
@@ -125,19 +365,23 @@ export default function AdminUsers() {
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small text-secondary">Email</label>
+                      <label className="form-label small text-secondary">
+                        Email
+                      </label>
                       <input
                         className="form-control"
                         name="email"
                         type="email"
                         value={form.email}
                         onChange={onChange}
-                        placeholder="correo@institucion.edu"
+                        placeholder="correo@dominio"
                       />
                     </div>
 
                     <div className="col-md-4">
-                      <label className="form-label small text-secondary">Rol</label>
+                      <label className="form-label small text-secondary">
+                        Rol
+                      </label>
                       <select
                         className="form-select"
                         name="role"
@@ -146,12 +390,13 @@ export default function AdminUsers() {
                       >
                         <option value="STUDENT">Estudiante</option>
                         <option value="MENTOR">Mentor</option>
-                        <option value="ADMIN">Admin</option>
                       </select>
                     </div>
 
                     <div className="col-md-4">
-                      <label className="form-label small text-secondary">Ciudad</label>
+                      <label className="form-label small text-secondary">
+                        Ciudad
+                      </label>
                       <input
                         className="form-control"
                         name="city"
@@ -161,12 +406,37 @@ export default function AdminUsers() {
                       />
                     </div>
 
-                    <div className="col-md-4 d-flex align-items-end justify-content-end gap-2">
-                      <button className="btn btn-primary" onClick={saveUser}>
-                        {isEditing ? 'Guardar cambios' : 'Crear usuario'}
+                    <div className="col-md-4">
+                      <label className="form-label small text-secondary">
+                        Contraseña
+                      </label>
+                      <input
+                        className="form-control"
+                        name="password"
+                        type="password"
+                        value={form.password}
+                        onChange={onChange}
+                        placeholder={
+                          isEditing
+                            ? "Dejar vacío para no cambiar"
+                            : "Contraseña inicial"
+                        }
+                      />
+                    </div>
+
+                    <div className="col-12 d-flex justify-content-end gap-2">
+                      <button
+                        className="btn btn-primary"
+                        onClick={saveUser}
+                        disabled={loading}
+                      >
+                        {isEditing ? "Guardar cambios" : "Crear usuario"}
                       </button>
                       {isEditing && (
-                        <button className="btn btn-outline-secondary" onClick={resetForm}>
+                        <button
+                          className="btn btn-outline-secondary"
+                          onClick={resetForm}
+                        >
                           Cancelar
                         </button>
                       )}
@@ -174,65 +444,112 @@ export default function AdminUsers() {
                   </div>
                 </div>
 
-                {/* Tabla de usuarios */}
+                {/* Tabla */}
                 <div className="w3-card w3-white rounded-3 p-3">
-                  <h6 className="fw-bold mb-3">Listado de Usuarios</h6>
+                  <h6 className="fw-bold mb-3">
+                    {activeTab === "STUDENT"
+                      ? "Listado de estudiantes"
+                      : "Listado de mentores"}
+                  </h6>
 
-                  <div className="table-responsive">
-                    <table className="table align-middle table-sm">
-                      <thead className="table-light">
-                        <tr>
-                          <th>Nombre</th>
-                          <th>Email</th>
-                          <th>Rol</th>
-                          <th>Ciudad</th>
-                          <th className="text-end">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users.map(u => (
-                          <tr key={u.id}>
-                            <td>{u.name}</td>
-                            <td className="small text-secondary">{u.email}</td>
-                            <td>
-                              {u.role === 'STUDENT' && (
-                                <span className="badge text-bg-primary">Estudiante</span>
-                              )}
-                              {u.role === 'MENTOR' && (
-                                <span className="badge text-bg-success">Mentor</span>
-                              )}
-                              {u.role === 'ADMIN' && (
-                                <span className="badge text-bg-dark">Admin</span>
-                              )}
-                            </td>
-                            <td>{u.city}</td>
-                            <td className="text-end">
-                              <div className="btn-group">
-                                <button
-                                  className="btn btn-sm btn-outline-secondary"
-                                  onClick={() => editUser(u)}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  className="btn btn-sm btn-outline-danger"
-                                  onClick={() => deleteUser(u.id)}
-                                >
-                                  Eliminar
-                                </button>
-                              </div>
-                            </td>
+                  {loading ? (
+                    <div className="text-center text-muted py-3">
+                      Cargando...
+                    </div>
+                  ) : (
+                    <div className="table-responsive">
+                      <table className="table align-middle table-sm">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Nombre</th>
+                            <th>Email</th>
+                            <th>Rol</th>
+                            <th>Ciudad</th>
+                            <th>Estado</th>
+                            <th className="text-end">Acciones</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {filtered.map((u) => (
+                            <tr key={u.id}>
+                              <td>{u.name}</td>
+                              <td className="small text-secondary">{u.email}</td>
+                              <td>
+                                {u.role === "STUDENT" && (
+                                  <span className="badge text-bg-primary">
+                                    Estudiante
+                                  </span>
+                                )}
+                                {u.role === "MENTOR" && (
+                                  <span className="badge text-bg-success">
+                                    Mentor
+                                  </span>
+                                )}
+                                {!u.role && (
+                                  <span className="badge text-bg-secondary">
+                                    —
+                                  </span>
+                                )}
+                              </td>
+                              <td>{u.city || "-"}</td>
+                              <td>
+                                {u.blocked ? (
+                                  <span className="badge text-bg-danger">
+                                    Bloqueado
+                                  </span>
+                                ) : (
+                                  <span className="badge text-bg-success">
+                                    Activo
+                                  </span>
+                                )}
+                              </td>
+                              <td className="text-end">
+                                <div className="d-flex justify-content-end align-items-center gap-2">
+                                  <button
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => editUser(u)}
+                                    title="Editar"
+                                    aria-label={`Editar ${u.name}`}
+                                  >
+                                    <i className="bi bi-pencil" aria-hidden="true"></i>
+                                  </button>
 
+                                  <button
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => deleteUser(u.id, u.role)}
+                                    title="Eliminar"
+                                    aria-label={`Eliminar ${u.name}`}
+                                  >
+                                    <i className="bi bi-x-lg" aria-hidden="true"></i>
+                                  </button>
+
+                                  <button
+                                    className={`btn btn-sm ${u.blocked ? 'btn-outline-success' : 'btn-outline-warning'}`}
+                                    onClick={() => toggleBlock(u)}
+                                    title={u.blocked ? 'Desbloquear' : 'Bloquear'}
+                                    aria-label={`${u.blocked ? 'Desbloquear' : 'Bloquear'} ${u.name}`}
+                                  >
+                                    <i className={`bi ${u.blocked ? 'bi-unlock' : 'bi-lock'}`} aria-hidden="true"></i>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                          {filtered.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="text-center text-muted py-3">
+                                No hay registros.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-
               </div>
             </div>
-
+            {/* fin contenido */}
           </div>
         </div>
       </main>

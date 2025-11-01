@@ -26,26 +26,25 @@ function Sidebar({ role: propRole } = {}) {
   const links = useMemo(() => {
     const common = [
       // dirigir al dashboard según el rol (student tiene /student/dashboard en App.jsx)
-      { to: role === 'mentor' ? '/mentor/dashboard' : '/student/dashboard', label: 'Inicio' },
-      { to: role === 'mentor' ? '/mentor/profile' : '/student/profile', label: 'Mi Perfil' },
+      { to: role === 'mentor' ? '/mentor/dashboard' : '/student/dashboard', label: 'Inicio', icon: 'bi-house' },
+      { to: role === 'mentor' ? '/mentor/profile' : '/student/profile', label: 'Mi Perfil', icon: 'bi-person-circle' },
     ];
 
     if (role === 'mentor') {
       return [
         ...common,
         // usar ruta en minúsculas para coincidir con App.jsx
-        { to: '/mentoring', label: 'Mentorías' },
-        { to: '/agenda', label: 'Agenda' },
+        { to: '/mentoring', label: 'Mentorías', icon: 'bi-people' },
+        { to: '/agenda', label: 'Agenda', icon: 'bi-calendar3' },
       ];
     }
 
     // student
     return [
       ...common,
-      { to: '/buscar-mentor', label: 'Buscar Mentor' },
-      // La ruta incluye la 'E' final según la convención del proyecto
-      { to: '/mis-sesionesE', label: 'Mis Sesiones' },
-      { to: '/match', label: 'Match' },
+      { to: '/buscar-mentor', label: 'Buscar Mentor', icon: 'bi-search' },
+      { to: '/mis-sesionesE', label: 'Mis Sesiones', icon: 'bi-calendar-check' },
+      { to: '/match', label: 'Match', icon: 'bi-heart' },
     ];
   }, [role]);
 
@@ -78,8 +77,9 @@ function Sidebar({ role: propRole } = {}) {
                 // ignore
               }
             }}
-            className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center ${isActive(l.to) ? 'active' : ''}`}
+            className={`list-group-item list-group-item-action d-flex justify-content-start align-items-center gap-2 ${isActive(l.to) ? 'active' : ''}`}
           >
+            {l.icon && <i className={`bi ${l.icon} me-2`} aria-hidden="true"></i>}
             <span>{l.label}</span>
           </Link>
         ))}

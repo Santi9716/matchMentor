@@ -7,8 +7,7 @@ export default function AdminSidebar() {
   const links = [
     { to: '/admin/dashboard', icon: 'bi-speedometer2', label: 'Dashboard' },
     { to: '/admin/users',     icon: 'bi-people',       label: 'Usuarios' },
-    { to: '/admin/reports',   icon: 'bi-bar-chart',    label: 'Reportes' },
-    { to: '/admin/settings',  icon: 'bi-gear',         label: 'Configuración' },
+    // Configuración y Registro eliminados por petición del usuario
   ];
 
   const isActive = (to) =>
